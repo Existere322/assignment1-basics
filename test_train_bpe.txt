@@ -1,0 +1,566 @@
+============================= test session starts ==============================
+platform linux -- Python 3.13.0, pytest-8.4.1, pluggy-1.6.0
+rootdir: /home/huiwei/fy/zhangshuai/assignment1-basics
+configfile: pyproject.toml
+plugins: launch-testing-1.0.13, launch-testing-ros-0.19.13, jaxtyping-0.3.2
+collected 3 items
+
+tests/test_train_bpe.py::test_train_bpe_speed PASSED
+tests/test_train_bpe.py::test_train_bpe PASSED
+tests/test_train_bpe.py::test_train_bpe_special_tokens PASSED
+
+============================== 3 passed in 4.31s ===============================
+============================= test session starts ==============================
+platform linux -- Python 3.13.0, pytest-8.4.1, pluggy-1.6.0
+rootdir: /home/huiwei/fy/zhangshuai/assignment1-basics
+configfile: pyproject.toml
+plugins: launch-testing-1.0.13, launch-testing-ros-0.19.13, jaxtyping-0.3.2
+collected 3 items
+
+tests/test_train_bpe.py::test_train_bpe_speed PASSED
+tests/test_train_bpe.py::test_train_bpe PASSED
+tests/test_train_bpe.py::test_train_bpe_special_tokens PASSED
+
+============================== 3 passed in 4.26s ===============================
+============================= test session starts ==============================
+platform linux -- Python 3.13.0, pytest-8.4.1, pluggy-1.6.0
+rootdir: /home/huiwei/fy/zhangshuai/assignment1-basics
+configfile: pyproject.toml
+plugins: launch-testing-1.0.13, launch-testing-ros-0.19.13, jaxtyping-0.3.2
+collected 3 items
+
+tests/test_train_bpe.py::test_train_bpe_speed FAILED
+tests/test_train_bpe.py::test_train_bpe FAILED
+tests/test_train_bpe.py::test_train_bpe_special_tokens FAILED
+
+=================================== FAILURES ===================================
+_____________________________ test_train_bpe_speed _____________________________
+
+    def test_train_bpe_speed():
+        """
+        Ensure that BPE training is relatively efficient by measuring training
+        time on this small dataset and throwing an error if it takes more than 1.5 seconds.
+        This is a pretty generous upper-bound, it takes 0.38 seconds with the
+        reference implementation on my laptop. In contrast, the toy implementation
+        takes around 3 seconds.
+        """
+        input_path = FIXTURES_PATH / "corpus.en"
+        start_time = time.time()
+>       _, _ = run_train_bpe(
+            input_path=input_path,
+            vocab_size=500,
+            special_tokens=["<|endoftext|>"],
+        )
+
+tests/test_train_bpe.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/adapters.py:597: in run_train_bpe
+    result = merge(pre_tokens, vocab_size, vocab)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+pre_tokens = Counter({(b' ', b','): 1306, (b' ', b't', b'h', b'e'): 1279, (b'\n',): 1015, (b' ', b'.'): 962, (b' ', b'o', b'f'): 64...', b'h', b't'): 1, (b' ', b's', b'a', b'i', b'n', b't', b's'): 1, (b' ', b'f', b'a', b't', b'n', b'e', b's', b's'): 1})
+vocab_size = 500, vocab = {0: b'\x00', 1: b'\x01', 2: b'\x02', 3: b'\x03', ...}
+
+    def merge(
+        pre_tokens: dict[tuple[bytes], int],
+        vocab_size: int,
+        vocab: dict[int, bytes]
+    ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
+    
+        vocab_num = len(vocab)
+        pairs = Counter()                   # 每个 pair 出现的次数
+        pair_token = defaultdict(set)       # 每个 pair 对应的 pre-token 索引
+        new_pre_token = {}                  # 用每个 pre-token 的索引存储其出现次数
+        words = []                          # pre-token 的索引与内容
+        merge_list = []
+    
+    
+        # 首先计算邻接对的出现次数，以及每个邻接对所在的单词
+        # 对于每个邻接对对应的单词，我们通过索引的方式指向一个列表
+        # 这样可以更新该列表而不必改变整个索引
+        # TODO: 这部分可以通过并行化进行加速，只需要分成四块统计即可
+        index = 0
+        for token in pre_tokens:
+            words.append(token)
+            new_pre_token[index] = pre_tokens[token]
+            for pre, back in zip(token[:-1], token[1:]):
+                pairs[(pre, back)] += pre_tokens[token]
+                pair_token[(pre, back)].add(index)
+            index += 1
+    
+        # 由于后面的合并，每个单独的单词都会发生改变，因此 pre_tokens 也应该存储 words 的序号而不是 tuple 本身
+    
+        # 构建优先队列保存 pair 的数量
+        pair_heap = [LargePair(count, pair) for pair, count in pairs.items()]
+    
+        heapq.heapify(pair_heap)
+    
+    
+        # 我们首先保存每个 pair 对应的 word 有哪些
+        # 然后根据合并的 pair 对 word 涉及到的 pair 次数进行更新
+        # 采用 dict 存储每个 pair 的次数
+        # 同时采用惰性更新的大根堆计算最大的次数，取堆顶与 pair dict 比较，一致说明数据有效则进行更新，否则舍弃
+        while vocab_num < vocab_size :
+            # 从堆中获得次数最多的邻接对
+            # 每次从队列取出元素之前先判空
+            if not pair_heap :
+                return (vocab, merge_list)
+            tuple_top_pair = heapq.heappop(pair_heap)
+    
+            # 取出邻接对之后先判断是否有效
+            while tuple_top_pair.count != pairs[tuple_top_pair.pair]:
+                if not pair_heap :
+                    return (vocab, merge_list)
+                tuple_top_pair = heapq.heappop(pair_heap)
+    
+            top_pair = tuple_top_pair.pair
+    
+            num_changed = set()
+    
+            # 遍历含有该邻接对的 token 进行更新
+            for num in pair_token[top_pair]:
+                word = words[num]
+                new_word = []
+                combine_pl = []
+                insert_pl = []
+                pre = False
+    
+                # TODO: 需要用正确的方式去查找存在的邻接对，然后再进行更新
+    
+                # 我们只修改合并的 pair 前后，pre, pair1, pair2, back (pair = pair1 + pair2)
+                # pre, pair1 和 pair2, back 首先在 pair_token 中去掉 word 这个词对应的 num，其次 pairs 上减少次数 new_pre_token[num]
+                # pre, pair 和 pair, back 在 pair_token 中加上 num，且 pairs 上次数加上 new_pre_token[num]
+    
+                # 首先找出原来词的位置
+                i = 0
+                j = 0
+                while i < len(word):
+                    if i + 1 < len(word) and (word[i], word[i + 1]) == top_pair:
+                        combine_pl.append(i)
+                        insert_pl.append(j)
+                        new_word.append(word[i] + word[i + 1])
+                        i += 2
+                        pairs[top_pair] -= new_pre_token[num]
+                    else:
+                        new_word.append(word[i])
+                        i += 1
+                    j += 1
+    
+                new_word = tuple(new_word)
+                words[num] = new_word
+    
+                # combine_pl 代表合并的位置，word[i-1],word[i] 和 word[i+1],word[i+2] 都是需要删去减少的
+                # insert_pl 代表合并后内容在新词中的位置，new_word[j-1], new_word[j] 和 new_word[j], new_word[j+1] 都是需要插入增加的
+                # 两者都需判定，若前面是合并/新插入内容，则不进行增加
+                # 问题：a b c d a b 若合并 b c 会导致 a b 被移除，
+    
+                # 之后减去原来词所有邻接对的次数
+                for i in range(len(combine_pl)):
+                    pl = combine_pl[i]
+    
+                    # 首先判断 i 前一个是不是 pl - 2 对应的位置，若是不做改变
+                    if pl-1 >= 0 and ((i-1 >= 0 and (pl-2) != combine_pl[i-1]) or (i-1 < 0)):
+                        pre_tuple = (word[pl-1], word[pl])
+                        if pl + 2 < len(word) and word[pl] == b' ' and word[pl+1] == b't' and word[pl+2] == b'h':
+                            print("the right place.")
+                        pairs[pre_tuple] -= new_pre_token[num]
+                        pair_token[pre_tuple].discard(num)
+                        num_changed.add(pre_tuple)
+    
+                    # 如果有后一个邻接对，则同样修改
+                    if pl+2 < len(word) and top_pair != (word[pl+1], word[pl+2]):
+                        back_tuple = (word[pl+1], word[pl+2])
+                        pairs[back_tuple] -= new_pre_token[num]
+                        pair_token[back_tuple].discard(num)
+                        num_changed.add(back_tuple)
+    
+                for j in range(len(insert_pl)):
+                    pl = insert_pl[j]
+    
+                    # 首先判断 j 前一个内容是不是 pl - 1 对应的位置，若是不改变
+                    if pl-1 >= 0 and ((j-1 >= 0 and (pl-1) != insert_pl[j-1]) or j-1 < 0):
+                        pre_tuple = (new_word[pl-1], new_word[pl])
+                        pairs[pre_tuple] += new_pre_token[num]
+                        pair_token[pre_tuple].add(num)
+                        num_changed.add(pre_tuple)
+    
+                    if pl+1 < len(new_word):
+                        back_tuple = (new_word[pl], new_word[pl+1])
+                        pairs[back_tuple] += new_pre_token[num]
+                        pair_token[back_tuple].add(num)
+                        num_changed.add(back_tuple)
+    
+                for pre, back in zip(new_word[:-1], new_word[1:]):
+                    pair_token[(pre, back)].add(num)
+    
+    
+            for pair in num_changed:
+                heapq.heappush(pair_heap, LargePair(pairs[pair], pair))
+    
+    
+            combine = b"".join(top_pair)
+            vocab[vocab_num] = combine
+            vocab_num += 1
+            merge_list.append(top_pair)
+    
+>       merge_list.append("asa", "sasad")
+E       TypeError: list.append() takes exactly one argument (2 given)
+
+cs336_basics/bpe_tokenizer.py:355: TypeError
+________________________________ test_train_bpe ________________________________
+
+    def test_train_bpe():
+        input_path = FIXTURES_PATH / "corpus.en"
+>       vocab, merges = run_train_bpe(
+            input_path=input_path,
+            vocab_size=500,
+            special_tokens=["<|endoftext|>"],
+        )
+
+tests/test_train_bpe.py:29: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/adapters.py:597: in run_train_bpe
+    result = merge(pre_tokens, vocab_size, vocab)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+pre_tokens = Counter({(b' ', b','): 1306, (b' ', b't', b'h', b'e'): 1279, (b'\n',): 1015, (b' ', b'.'): 962, (b' ', b'o', b'f'): 64...', b'h', b't'): 1, (b' ', b's', b'a', b'i', b'n', b't', b's'): 1, (b' ', b'f', b'a', b't', b'n', b'e', b's', b's'): 1})
+vocab_size = 500, vocab = {0: b'\x00', 1: b'\x01', 2: b'\x02', 3: b'\x03', ...}
+
+    def merge(
+        pre_tokens: dict[tuple[bytes], int],
+        vocab_size: int,
+        vocab: dict[int, bytes]
+    ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
+    
+        vocab_num = len(vocab)
+        pairs = Counter()                   # 每个 pair 出现的次数
+        pair_token = defaultdict(set)       # 每个 pair 对应的 pre-token 索引
+        new_pre_token = {}                  # 用每个 pre-token 的索引存储其出现次数
+        words = []                          # pre-token 的索引与内容
+        merge_list = []
+    
+    
+        # 首先计算邻接对的出现次数，以及每个邻接对所在的单词
+        # 对于每个邻接对对应的单词，我们通过索引的方式指向一个列表
+        # 这样可以更新该列表而不必改变整个索引
+        # TODO: 这部分可以通过并行化进行加速，只需要分成四块统计即可
+        index = 0
+        for token in pre_tokens:
+            words.append(token)
+            new_pre_token[index] = pre_tokens[token]
+            for pre, back in zip(token[:-1], token[1:]):
+                pairs[(pre, back)] += pre_tokens[token]
+                pair_token[(pre, back)].add(index)
+            index += 1
+    
+        # 由于后面的合并，每个单独的单词都会发生改变，因此 pre_tokens 也应该存储 words 的序号而不是 tuple 本身
+    
+        # 构建优先队列保存 pair 的数量
+        pair_heap = [LargePair(count, pair) for pair, count in pairs.items()]
+    
+        heapq.heapify(pair_heap)
+    
+    
+        # 我们首先保存每个 pair 对应的 word 有哪些
+        # 然后根据合并的 pair 对 word 涉及到的 pair 次数进行更新
+        # 采用 dict 存储每个 pair 的次数
+        # 同时采用惰性更新的大根堆计算最大的次数，取堆顶与 pair dict 比较，一致说明数据有效则进行更新，否则舍弃
+        while vocab_num < vocab_size :
+            # 从堆中获得次数最多的邻接对
+            # 每次从队列取出元素之前先判空
+            if not pair_heap :
+                return (vocab, merge_list)
+            tuple_top_pair = heapq.heappop(pair_heap)
+    
+            # 取出邻接对之后先判断是否有效
+            while tuple_top_pair.count != pairs[tuple_top_pair.pair]:
+                if not pair_heap :
+                    return (vocab, merge_list)
+                tuple_top_pair = heapq.heappop(pair_heap)
+    
+            top_pair = tuple_top_pair.pair
+    
+            num_changed = set()
+    
+            # 遍历含有该邻接对的 token 进行更新
+            for num in pair_token[top_pair]:
+                word = words[num]
+                new_word = []
+                combine_pl = []
+                insert_pl = []
+                pre = False
+    
+                # TODO: 需要用正确的方式去查找存在的邻接对，然后再进行更新
+    
+                # 我们只修改合并的 pair 前后，pre, pair1, pair2, back (pair = pair1 + pair2)
+                # pre, pair1 和 pair2, back 首先在 pair_token 中去掉 word 这个词对应的 num，其次 pairs 上减少次数 new_pre_token[num]
+                # pre, pair 和 pair, back 在 pair_token 中加上 num，且 pairs 上次数加上 new_pre_token[num]
+    
+                # 首先找出原来词的位置
+                i = 0
+                j = 0
+                while i < len(word):
+                    if i + 1 < len(word) and (word[i], word[i + 1]) == top_pair:
+                        combine_pl.append(i)
+                        insert_pl.append(j)
+                        new_word.append(word[i] + word[i + 1])
+                        i += 2
+                        pairs[top_pair] -= new_pre_token[num]
+                    else:
+                        new_word.append(word[i])
+                        i += 1
+                    j += 1
+    
+                new_word = tuple(new_word)
+                words[num] = new_word
+    
+                # combine_pl 代表合并的位置，word[i-1],word[i] 和 word[i+1],word[i+2] 都是需要删去减少的
+                # insert_pl 代表合并后内容在新词中的位置，new_word[j-1], new_word[j] 和 new_word[j], new_word[j+1] 都是需要插入增加的
+                # 两者都需判定，若前面是合并/新插入内容，则不进行增加
+                # 问题：a b c d a b 若合并 b c 会导致 a b 被移除，
+    
+                # 之后减去原来词所有邻接对的次数
+                for i in range(len(combine_pl)):
+                    pl = combine_pl[i]
+    
+                    # 首先判断 i 前一个是不是 pl - 2 对应的位置，若是不做改变
+                    if pl-1 >= 0 and ((i-1 >= 0 and (pl-2) != combine_pl[i-1]) or (i-1 < 0)):
+                        pre_tuple = (word[pl-1], word[pl])
+                        if pl + 2 < len(word) and word[pl] == b' ' and word[pl+1] == b't' and word[pl+2] == b'h':
+                            print("the right place.")
+                        pairs[pre_tuple] -= new_pre_token[num]
+                        pair_token[pre_tuple].discard(num)
+                        num_changed.add(pre_tuple)
+    
+                    # 如果有后一个邻接对，则同样修改
+                    if pl+2 < len(word) and top_pair != (word[pl+1], word[pl+2]):
+                        back_tuple = (word[pl+1], word[pl+2])
+                        pairs[back_tuple] -= new_pre_token[num]
+                        pair_token[back_tuple].discard(num)
+                        num_changed.add(back_tuple)
+    
+                for j in range(len(insert_pl)):
+                    pl = insert_pl[j]
+    
+                    # 首先判断 j 前一个内容是不是 pl - 1 对应的位置，若是不改变
+                    if pl-1 >= 0 and ((j-1 >= 0 and (pl-1) != insert_pl[j-1]) or j-1 < 0):
+                        pre_tuple = (new_word[pl-1], new_word[pl])
+                        pairs[pre_tuple] += new_pre_token[num]
+                        pair_token[pre_tuple].add(num)
+                        num_changed.add(pre_tuple)
+    
+                    if pl+1 < len(new_word):
+                        back_tuple = (new_word[pl], new_word[pl+1])
+                        pairs[back_tuple] += new_pre_token[num]
+                        pair_token[back_tuple].add(num)
+                        num_changed.add(back_tuple)
+    
+                for pre, back in zip(new_word[:-1], new_word[1:]):
+                    pair_token[(pre, back)].add(num)
+    
+    
+            for pair in num_changed:
+                heapq.heappush(pair_heap, LargePair(pairs[pair], pair))
+    
+    
+            combine = b"".join(top_pair)
+            vocab[vocab_num] = combine
+            vocab_num += 1
+            merge_list.append(top_pair)
+    
+>       merge_list.append("asa", "sasad")
+E       TypeError: list.append() takes exactly one argument (2 given)
+
+cs336_basics/bpe_tokenizer.py:355: TypeError
+________________________ test_train_bpe_special_tokens _________________________
+
+snapshot = <tests.conftest.Snapshot object at 0x7d694d83ee40>
+
+    def test_train_bpe_special_tokens(snapshot):
+        """
+        Ensure that the special tokens are added to the vocabulary and not
+        merged with other tokens.
+        """
+        input_path = FIXTURES_PATH / "tinystories_sample_5M.txt"
+>       vocab, merges = run_train_bpe(
+            input_path=input_path,
+            vocab_size=1000,
+            special_tokens=["<|endoftext|>"],
+        )
+
+tests/test_train_bpe.py:71: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/adapters.py:597: in run_train_bpe
+    result = merge(pre_tokens, vocab_size, vocab)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+pre_tokens = Counter({(b'.',): 98136, (b',',): 55123, (b' ', b't', b'h', b'e'): 48886, (b' ', b'a', b'n', b'd'): 45801, (b'\n',): 3...', b's'): 1, (b' ', b'r', b'e', b'a', b'd', b'a', b'b', b'l', b'e'): 1, (b' ', b'e', b'f', b'f', b'e', b'c', b't'): 1})
+vocab_size = 1000, vocab = {0: b'\x00', 1: b'\x01', 2: b'\x02', 3: b'\x03', ...}
+
+    def merge(
+        pre_tokens: dict[tuple[bytes], int],
+        vocab_size: int,
+        vocab: dict[int, bytes]
+    ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
+    
+        vocab_num = len(vocab)
+        pairs = Counter()                   # 每个 pair 出现的次数
+        pair_token = defaultdict(set)       # 每个 pair 对应的 pre-token 索引
+        new_pre_token = {}                  # 用每个 pre-token 的索引存储其出现次数
+        words = []                          # pre-token 的索引与内容
+        merge_list = []
+    
+    
+        # 首先计算邻接对的出现次数，以及每个邻接对所在的单词
+        # 对于每个邻接对对应的单词，我们通过索引的方式指向一个列表
+        # 这样可以更新该列表而不必改变整个索引
+        # TODO: 这部分可以通过并行化进行加速，只需要分成四块统计即可
+        index = 0
+        for token in pre_tokens:
+            words.append(token)
+            new_pre_token[index] = pre_tokens[token]
+            for pre, back in zip(token[:-1], token[1:]):
+                pairs[(pre, back)] += pre_tokens[token]
+                pair_token[(pre, back)].add(index)
+            index += 1
+    
+        # 由于后面的合并，每个单独的单词都会发生改变，因此 pre_tokens 也应该存储 words 的序号而不是 tuple 本身
+    
+        # 构建优先队列保存 pair 的数量
+        pair_heap = [LargePair(count, pair) for pair, count in pairs.items()]
+    
+        heapq.heapify(pair_heap)
+    
+    
+        # 我们首先保存每个 pair 对应的 word 有哪些
+        # 然后根据合并的 pair 对 word 涉及到的 pair 次数进行更新
+        # 采用 dict 存储每个 pair 的次数
+        # 同时采用惰性更新的大根堆计算最大的次数，取堆顶与 pair dict 比较，一致说明数据有效则进行更新，否则舍弃
+        while vocab_num < vocab_size :
+            # 从堆中获得次数最多的邻接对
+            # 每次从队列取出元素之前先判空
+            if not pair_heap :
+                return (vocab, merge_list)
+            tuple_top_pair = heapq.heappop(pair_heap)
+    
+            # 取出邻接对之后先判断是否有效
+            while tuple_top_pair.count != pairs[tuple_top_pair.pair]:
+                if not pair_heap :
+                    return (vocab, merge_list)
+                tuple_top_pair = heapq.heappop(pair_heap)
+    
+            top_pair = tuple_top_pair.pair
+    
+            num_changed = set()
+    
+            # 遍历含有该邻接对的 token 进行更新
+            for num in pair_token[top_pair]:
+                word = words[num]
+                new_word = []
+                combine_pl = []
+                insert_pl = []
+                pre = False
+    
+                # TODO: 需要用正确的方式去查找存在的邻接对，然后再进行更新
+    
+                # 我们只修改合并的 pair 前后，pre, pair1, pair2, back (pair = pair1 + pair2)
+                # pre, pair1 和 pair2, back 首先在 pair_token 中去掉 word 这个词对应的 num，其次 pairs 上减少次数 new_pre_token[num]
+                # pre, pair 和 pair, back 在 pair_token 中加上 num，且 pairs 上次数加上 new_pre_token[num]
+    
+                # 首先找出原来词的位置
+                i = 0
+                j = 0
+                while i < len(word):
+                    if i + 1 < len(word) and (word[i], word[i + 1]) == top_pair:
+                        combine_pl.append(i)
+                        insert_pl.append(j)
+                        new_word.append(word[i] + word[i + 1])
+                        i += 2
+                        pairs[top_pair] -= new_pre_token[num]
+                    else:
+                        new_word.append(word[i])
+                        i += 1
+                    j += 1
+    
+                new_word = tuple(new_word)
+                words[num] = new_word
+    
+                # combine_pl 代表合并的位置，word[i-1],word[i] 和 word[i+1],word[i+2] 都是需要删去减少的
+                # insert_pl 代表合并后内容在新词中的位置，new_word[j-1], new_word[j] 和 new_word[j], new_word[j+1] 都是需要插入增加的
+                # 两者都需判定，若前面是合并/新插入内容，则不进行增加
+                # 问题：a b c d a b 若合并 b c 会导致 a b 被移除，
+    
+                # 之后减去原来词所有邻接对的次数
+                for i in range(len(combine_pl)):
+                    pl = combine_pl[i]
+    
+                    # 首先判断 i 前一个是不是 pl - 2 对应的位置，若是不做改变
+                    if pl-1 >= 0 and ((i-1 >= 0 and (pl-2) != combine_pl[i-1]) or (i-1 < 0)):
+                        pre_tuple = (word[pl-1], word[pl])
+                        if pl + 2 < len(word) and word[pl] == b' ' and word[pl+1] == b't' and word[pl+2] == b'h':
+                            print("the right place.")
+                        pairs[pre_tuple] -= new_pre_token[num]
+                        pair_token[pre_tuple].discard(num)
+                        num_changed.add(pre_tuple)
+    
+                    # 如果有后一个邻接对，则同样修改
+                    if pl+2 < len(word) and top_pair != (word[pl+1], word[pl+2]):
+                        back_tuple = (word[pl+1], word[pl+2])
+                        pairs[back_tuple] -= new_pre_token[num]
+                        pair_token[back_tuple].discard(num)
+                        num_changed.add(back_tuple)
+    
+                for j in range(len(insert_pl)):
+                    pl = insert_pl[j]
+    
+                    # 首先判断 j 前一个内容是不是 pl - 1 对应的位置，若是不改变
+                    if pl-1 >= 0 and ((j-1 >= 0 and (pl-1) != insert_pl[j-1]) or j-1 < 0):
+                        pre_tuple = (new_word[pl-1], new_word[pl])
+                        pairs[pre_tuple] += new_pre_token[num]
+                        pair_token[pre_tuple].add(num)
+                        num_changed.add(pre_tuple)
+    
+                    if pl+1 < len(new_word):
+                        back_tuple = (new_word[pl], new_word[pl+1])
+                        pairs[back_tuple] += new_pre_token[num]
+                        pair_token[back_tuple].add(num)
+                        num_changed.add(back_tuple)
+    
+                for pre, back in zip(new_word[:-1], new_word[1:]):
+                    pair_token[(pre, back)].add(num)
+    
+    
+            for pair in num_changed:
+                heapq.heappush(pair_heap, LargePair(pairs[pair], pair))
+    
+    
+            combine = b"".join(top_pair)
+            vocab[vocab_num] = combine
+            vocab_num += 1
+            merge_list.append(top_pair)
+    
+>       merge_list.append("asa", "sasad")
+E       TypeError: list.append() takes exactly one argument (2 given)
+
+cs336_basics/bpe_tokenizer.py:355: TypeError
+=========================== short test summary info ============================
+FAILED tests/test_train_bpe.py::test_train_bpe_speed - TypeError: list.append...
+FAILED tests/test_train_bpe.py::test_train_bpe - TypeError: list.append() tak...
+FAILED tests/test_train_bpe.py::test_train_bpe_special_tokens - TypeError: li...
+============================== 3 failed in 3.29s ===============================
+============================= test session starts ==============================
+platform linux -- Python 3.13.0, pytest-8.4.1, pluggy-1.6.0
+rootdir: /home/huiwei/fy/zhangshuai/assignment1-basics
+configfile: pyproject.toml
+plugins: launch-testing-1.0.13, launch-testing-ros-0.19.13, jaxtyping-0.3.2
+collected 3 items
+
+tests/test_train_bpe.py::test_train_bpe_speed time_consume: 0.9006185531616211
+PASSED
+tests/test_train_bpe.py::test_train_bpe PASSED
+tests/test_train_bpe.py::test_train_bpe_special_tokens PASSED
+
+============================== 3 passed in 4.94s ===============================

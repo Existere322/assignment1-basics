@@ -1,0 +1,13 @@
+============================= test session starts ==============================
+platform linux -- Python 3.13.0, pytest-8.4.1, pluggy-1.6.0 -- /home/huiwei/fy/zhangshuai/assignment1-basics/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/huiwei/fy/zhangshuai/assignment1-basics
+configfile: pyproject.toml
+plugins: launch-testing-1.0.13, launch-testing-ros-0.19.13, jaxtyping-0.3.2
+collecting ... collected 3 items
+
+tests/test_train_bpe.py::test_train_bpe_speed PASSED
+tests/test_train_bpe.py::test_train_bpe PASSED
+tests/test_train_bpe.py::test_train_bpe_special_tokens PASSED
+
+============================== 3 passed in 12.48s ==============================

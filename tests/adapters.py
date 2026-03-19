@@ -7,6 +7,7 @@ from typing import IO, Any, BinaryIO
 import numpy.typing as npt
 import torch
 from jaxtyping import Bool, Float, Int
+from cs336_basics.bpe_tokenizer import vocab_init, pre_tokenization, merge
 from torch import Tensor
 
 
@@ -589,4 +590,10 @@ def run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
-    raise NotImplementedError
+    vocab = vocab_init(special_tokens)
+
+    pre_tokens = pre_tokenization(input_path, special_tokens)
+
+    result = merge(pre_tokens, vocab_size, vocab)
+
+    return result
