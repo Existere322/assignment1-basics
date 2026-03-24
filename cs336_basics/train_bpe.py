@@ -94,6 +94,7 @@ def process_chunk(
         
         if special_tokens:
             escaped_tokens = [regex.escape(tok) for tok in special_tokens]
+            # escape 是为了让原始文本被精确匹配
             pattern = "|".join(escaped_tokens)
             split_chunk = regex.split(pattern, chunk)
         else:
@@ -121,10 +122,8 @@ def pre_tokenization(
     
     # 在这一步骤中，调用预分词的分块代码进行分块
     # 分块后将不同的分块部署到不同的线程上
-    input_paths = []
     starts = []
     ends = []
-    special_tokenss = []
     global_counts = Counter()
 
     with open(input_path, "rb") as f:

@@ -1,16 +1,17 @@
 import time
-from bpe_tokenizer import vocab_init, pre_tokenization, merge
+from cs336_basics.train_bpe import vocab_init, pre_tokenization, merge
 import os
 import json
 from pathlib import Path
 
-
+datasets_owt = "owt_train.txt"
+datasets_TinyStory = "TinyStoriesV2-GPT4-train.txt"
 
 def main():
     print(f"当前主进程 PID: {os.getpid()}")
     start_time = time.time()
     base_dir = Path(__file__).resolve().parents[1]
-    input_path = base_dir / "data" / "TinyStoriesV2-GPT4-train.txt"
+    input_path = base_dir / "data" / datasets_owt
     special_tokens = ["<|endoftext|>"]
     output_dir = "bpe_tinystories_model"
 
