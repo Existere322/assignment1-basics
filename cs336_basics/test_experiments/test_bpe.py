@@ -13,7 +13,7 @@ def main():
     base_dir = Path(__file__).resolve().parents[2]
     input_path = base_dir / "data" / datasets_owt
     special_tokens = ["<|endoftext|>"]
-    output_dir = "bpe_tinystories_model"
+    output_dir = Path(__file__).resolve().parent / "bpe_owt_model"
 
     os.makedirs(output_dir, exist_ok=True)
     print(f"输出目录绝对路径: {os.path.abspath(output_dir)}")  # 加这行
