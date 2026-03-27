@@ -1,9 +1,0 @@
-当前主进程 PID: 3960882
-开始初始化...
-开始预分词 (Pre-tokenization)...
-预分词耗时: 301.99 秒
-开始 BPE 合并 (Merge)...
-BPE 合并耗时: 12.55 秒
-总计耗时: 5.24 分钟
-最长的 Token 是: b' accomplishment'
-长度: 15

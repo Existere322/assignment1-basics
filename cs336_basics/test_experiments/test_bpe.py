@@ -10,12 +10,13 @@ datasets_TinyStory = "TinyStoriesV2-GPT4-train.txt"
 def main():
     print(f"当前主进程 PID: {os.getpid()}")
     start_time = time.time()
-    base_dir = Path(__file__).resolve().parents[1]
+    base_dir = Path(__file__).resolve().parents[2]
     input_path = base_dir / "data" / datasets_owt
     special_tokens = ["<|endoftext|>"]
     output_dir = "bpe_tinystories_model"
 
     os.makedirs(output_dir, exist_ok=True)
+    print(f"输出目录绝对路径: {os.path.abspath(output_dir)}")  # 加这行
     vocab_path = os.path.join(output_dir, "vocab.json")  # 用于拼接文件目录和文件名的函数
 
     print("开始初始化...")
@@ -27,7 +28,7 @@ def main():
     print(f"预分词耗时: {pre_tok_time - start_time:.2f} 秒")
 
     print("开始 BPE 合并 (Merge)...")
-    vocab_result, merge_process = merge(word_counts, 10000, vocab)
+    vocab_result, merge_process = merge(word_counts, 32,000, vocab)
     
     end_time = time.time()
     print(f"BPE 合并耗时: {end_time - pre_tok_time:.2f} 秒")
