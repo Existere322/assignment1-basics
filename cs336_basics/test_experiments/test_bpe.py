@@ -28,7 +28,7 @@ def main():
     print(f"预分词耗时: {pre_tok_time - start_time:.2f} 秒")
 
     print("开始 BPE 合并 (Merge)...")
-    vocab_result, merge_process = merge(word_counts, 32,000, vocab)
+    vocab_result, merge_process = merge(word_counts, 32000, vocab)
     
     end_time = time.time()
     print(f"BPE 合并耗时: {end_time - pre_tok_time:.2f} 秒")
