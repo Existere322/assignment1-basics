@@ -20,12 +20,13 @@ class tokenizer():
         self.merge_rank = {}
         self.revocab = {}
 
-        vocab_size = max(vocab.keys()) if vocab else 0
+        if special_tokens and vocab[max(vocab.keys())].decode('utf-8') not in special_tokens:
+            vocab_size = max(vocab.keys()) + 1 if vocab else 0
 
-        if special_tokens:
-            for token in special_tokens:
-                vocab[vocab_size] = token.encode('utf-8')
-                vocab_size += 1
+            if special_tokens:
+                for token in special_tokens:
+                    vocab[vocab_size] = token.encode('utf-8')
+                    vocab_size += 1
 
         rank = 0
         for merge in merges:
@@ -35,7 +36,7 @@ class tokenizer():
         for i in vocab:
             self.revocab[vocab[i]] = i
   
-    
+    @classmethod
     def from_files(
         cls, 
         vocab_filepath: str, 
@@ -53,7 +54,20 @@ class tokenizer():
         with open(vocab_filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
 
-        vocab = {int(k): v.encode('utf-8') for k, v in data.items()}
+        # 预编译正则表达式，匹配 b"\\x" 加上两个十六进制字符（忽略大小写）
+        # 注意这里使用的是 byte 级别的正则: br'...'
+        hex_pattern = regex.compile(br'\\x([0-9a-fA-F]{2})')
+        vocab = {}
+
+        for k, v in data.items():
+            # 1. 常规字符串（如 " t", "<|endoftext|>" 或中文字符）正常转换为 utf-8 bytes
+            b_key = k.encode('utf-8')
+            
+            # 2. 将字面上转义的十六进制字符（如长度为4的 b'\\xbb'）替换为真正的单字节（如 b'\xbb'）
+            # m.group(1) 提取的是十六进制数字部分（如 b'bb'），转成整型后重建成单字节
+            b_key = hex_pattern.sub(lambda m: bytes([int(m.group(1), 16)]), b_key)
+            
+            vocab[int(v)] = b_key
         return vocab
     
 
@@ -62,12 +76,12 @@ class tokenizer():
         merges = []
         with open(merge_filepath, 'r', encoding='utf-8') as f:
             for line in f:
-                line = line.strip()
+                line = line.rstrip('\n')
                 if not line:
                     continue
 
-                parts = line.split()
-                if len(parts==2):
+                parts = line.rsplit(' ', 1)  # 从右边分割一次
+                if len(parts)==2:
                     merges.append((parts[0].encode('utf-8'), parts[1].encode('utf-8')))
 
         return merges
