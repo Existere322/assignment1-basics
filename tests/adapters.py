@@ -10,7 +10,7 @@ from jaxtyping import Bool, Float, Int
 from cs336_basics.train_bpe import vocab_init, pre_tokenization, merge
 from torch import Tensor
 from cs336_basics.tokenizer import tokenizer
-from cs336_basics.module import Linear, Embedding
+from cs336_basics.module import Linear, Embedding, RMSNorm, SwiGLU, RoPE, softmax
 
 
 def run_linear(
@@ -93,7 +93,15 @@ def run_swiglu(
     # swiglu.w1.weight.data = w1_weight
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
-    raise NotImplementedError
+
+    FeedForward = SwiGLU(d_model, d_ff)
+    FeedForward.load_state_dict({
+        "W1": w1_weight,
+        "W2": w2_weight,
+        "W3": w3_weight,
+    })
+    result = FeedForward.forward(in_features)
+    return result
 
 
 def run_scaled_dot_product_attention(
@@ -210,7 +218,9 @@ def run_rope(
     Returns:
         Float[Tensor, " ... sequence_length d_k"]: Tensor with RoPEd input.
     """
-    raise NotImplementedError
+    rope = RoPE(theta, d_k, max_seq_len)
+    result = rope.forward(in_query_or_key, token_positions)
+    return result
 
 
 def run_transformer_block(
@@ -388,7 +398,12 @@ def run_rmsnorm(
         Float[Tensor,"... d_model"]: Tensor of with the same shape as `in_features` with the output of running
         RMSNorm of the `in_features`.
     """
-    raise NotImplementedError
+
+    RMSNorm_layer = RMSNorm(d_model, eps)
+    RMSNorm_layer.load_state_dict({"g": weights})
+    result = RMSNorm_layer.forward(in_features)
+
+    return result
 
 
 def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
@@ -441,7 +456,7 @@ def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, "
         Float[Tensor, "..."]: Tensor of with the same shape as `in_features` with the output of
         softmax normalizing the specified `dim`.
     """
-    raise NotImplementedError
+    return softmax(in_features, dim)
 
 
 def run_cross_entropy(
