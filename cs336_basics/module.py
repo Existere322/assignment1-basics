@@ -124,4 +124,18 @@ def softmax(v: torch.Tensor, dim: int) -> torch.Tensor:
     return result
 
 
-
+def dot_product_attention(
+    Q: torch.Tensor,
+    K: torch.Tensor,
+    V: torch.Tensor,
+    mask: torch.Tensor | None = None,
+) -> torch.Tensor:
+    # Q: ... n d_k
+    # K: ... m d_k
+    softmax_content = einsum(Q, K, "... n dk, ... m dk -> ... n m")/(Q.shape[-1] ** 0.5)
+    if mask is not None:
+        softmax_content = softmax_content.masked_fill(~mask, -torch.inf)
+    softmax_result = softmax(softmax_content, -1)
+    result = einsum(softmax_result, V, "... n m, ... m d -> ... n d")
+    return result
+    

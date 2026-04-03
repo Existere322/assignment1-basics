@@ -10,7 +10,7 @@ from jaxtyping import Bool, Float, Int
 from cs336_basics.train_bpe import vocab_init, pre_tokenization, merge
 from torch import Tensor
 from cs336_basics.tokenizer import tokenizer
-from cs336_basics.module import Linear, Embedding, RMSNorm, SwiGLU, RoPE, softmax
+from cs336_basics.module import Linear, Embedding, RMSNorm, SwiGLU, RoPE, softmax, dot_product_attention
 
 
 def run_linear(
@@ -122,7 +122,7 @@ def run_scaled_dot_product_attention(
     Returns:
         Float[Tensor, " ... queries d_v"]: Output of SDPA
     """
-    raise NotImplementedError
+    return dot_product_attention(Q, K, V, mask)
 
 
 def run_multihead_self_attention(
