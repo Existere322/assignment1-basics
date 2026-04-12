@@ -2,6 +2,11 @@ import torch.nn as nn
 import torch
 from einops import rearrange, einsum
 
+"""
+TODO: 所有线性层用自己定义的 Linear 实现，传递参数使用 load_state_dict 方法进行传递
+      RoPE 的 forward 函数优化，不需要每次都存储一边整个 cos 和 sin 内容
+"""
+
 class Linear(nn.Module):
     def __init__(self,
         in_features: int,
@@ -58,6 +63,11 @@ class RMSNorm(nn.Module):
         return result.to(in_dtype)
 
 
+def SiLU(in_features: torch.Tensor) -> torch.Tensor:
+    result = in_features * torch.sigmoid(in_features)
+    return result
+
+
 class SwiGLU(nn.Module):
     def __init__(self, 
                  d_model: int, 
@@ -65,22 +75,14 @@ class SwiGLU(nn.Module):
                  device: torch.device | None = None, 
                  dtype: torch.dtype | None = None):    
         super().__init__()   
-        self.W1 = nn.Parameter(torch.empty(d_ff, d_model, device=device, dtype=dtype))
-        self.W3 = nn.Parameter(torch.empty(d_ff, d_model, device=device, dtype=dtype))
-        self.W2 = nn.Parameter(torch.empty(d_model, d_ff, device=device, dtype=dtype))
-        std = (2 / (d_ff + d_model)) ** 0.5
-        nn.init.trunc_normal_(self.W1, mean=0, std=std, a=-3*std, b=3*std)
-        nn.init.trunc_normal_(self.W2, mean=0, std=std, a=-3*std, b=3*std)
-        nn.init.trunc_normal_(self.W3, mean=0, std=std, a=-3*std, b=3*std)
-
+        self.W1 = Linear(d_model, d_ff, device=device, dtype=dtype)
+        self.W3 = Linear(d_model, d_ff, device=device, dtype=dtype)
+        self.W2 = Linear(d_ff, d_model, device=device, dtype=dtype)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        mid_1 = einsum(self.W1, x, "d_ff d_model, ... d_model -> ... d_ff")
-        mid_2 = torch.sigmoid(mid_1)
-        SiLU = mid_1 * mid_2
-        gate = einsum(self.W3, x, "d_ff d_model, ... d_model -> ... d_ff")
-        result = einsum(self.W2, SiLU * gate, "d_model d_ff, ... d_ff -> ... d_model")
-
+        silu = SiLU(self.W1(x))
+        gate = self.W3(x)
+        result = self.W2(silu * gate)
         return result
 
 
@@ -145,7 +147,7 @@ class multihead_self_attention(nn.Module):
     def __init__(self, 
                  d_model: int,
                  num_heads: int, 
-                 theta: float = 0.0, 
+                 theta: float | None = None, 
                  max_seq_len: int = 0, 
                  token_positions: torch.Tensor | None = None, 
                  device: torch.device | None = None, 
@@ -159,35 +161,66 @@ class multihead_self_attention(nn.Module):
         self.theta = theta
         self.max_seq_len = max_seq_len
         self.token_positions = token_positions
+        self.q_proj_weight = Linear(d_model, d_model, device, dtype)
+        self.k_proj_weight = Linear(d_model, d_model, device, dtype)
+        self.v_proj_weight = Linear(d_model, d_model, device, dtype)
+        self.o_proj_weight = Linear(d_model, d_model, device, dtype)
+        if self.theta is not None:
+            self.position_embedding = RoPE(self.theta, d_model//num_heads, self.max_seq_len, self.device)
+        # 因为对于输入的矩阵按照了注意力头进行拆分，因此在位置编码时每个矩阵的向量大小也发生了改变，变为 d_model/num_heads
 
 
     def forward(self,
-                 q_proj_weight: torch.Tensor,
-                 k_proj_weight: torch.Tensor,
-                 v_proj_weight: torch.Tensor,
-                 o_proj_weight: torch.Tensor,
-                 in_features: torch.Tensor) -> torch.Tensor:
-        Q_in = einsum(q_proj_weight, in_features, "dk din, ... seqlen din -> ... seqlen dk")
-        K_in = einsum(k_proj_weight, in_features, "dk din, ... seqlen din -> ... seqlen dk")
-        V_in = einsum(v_proj_weight, in_features, "dk din, ... seqlen din -> ... seqlen dk")
+                in_features: torch.Tensor) -> torch.Tensor:
+        Q_in = self.q_proj_weight(in_features)
+        K_in = self.k_proj_weight(in_features)
+        V_in = self.v_proj_weight(in_features)
 
         d_k = Q_in.shape[-1]
         Q_in = rearrange(Q_in, "... seqlen (head dv) -> ... head seqlen dv", head=self.num_heads, dv=d_k//self.num_heads)
         K_in = rearrange(K_in, "... seqlen (head dv) -> ... head seqlen dv", head=self.num_heads, dv=d_k//self.num_heads)
         V_in = rearrange(V_in, "... seqlen (head dv) -> ... head seqlen dv", head=self.num_heads, dv=d_k//self.num_heads)
 
-        if self.token_positions is not None:
-            position_embedding = RoPE(self.theta, Q_in.shape[-1], self.max_seq_len, self.device)
-            Q_in = position_embedding.forward(Q_in, self.token_positions)
-            K_in = position_embedding.forward(K_in, self.token_positions)
+        if self.theta is not None:
+            seq_len = Q_in.shape[-2]
+            if self.token_positions is None:
+                self.token_positions = torch.arange(seq_len, device=in_features.device)
+            Q_in = self.position_embedding(Q_in, self.token_positions)
+            K_in = self.position_embedding(K_in, self.token_positions)
 
         seq_len = Q_in.shape[-2]
         mask = torch.tril(torch.ones(seq_len, seq_len, dtype=torch.bool, device=Q_in.device))
         attention_result = dot_product_attention(Q_in, K_in, V_in, mask)
         attention_result = rearrange(attention_result, "... head seqlen dv -> ... seqlen (head dv)")
-        result = einsum(attention_result, o_proj_weight, "... seqlen dk, dm dk -> ... seqlen dm")
+        result = self.o_proj_weight(attention_result)
 
         return result
 
+
+class Transformer_Block(nn.Module):
+    def __init__(self, 
+                 d_model: int,
+                 num_heads: int,
+                 d_ff: int,
+                 max_seq_len: int,
+                 theta: float,
+                 device: torch.device | None = None, 
+                 dtype: torch.dtype | None = None):
+        super().__init__()
+        self.preNorm_block_one = RMSNorm(d_model=d_model, device=device, dtype=dtype)
+        self.preNorm_block_two = RMSNorm(d_model=d_model, device=device, dtype=dtype)
+        self.self_attention_block = multihead_self_attention(d_model, num_heads, theta, max_seq_len, device=device, dtype=dtype)
+        self.feedforward_block = SwiGLU(d_model, d_ff, device=device, dtype=dtype)
+
+    def forward(self, in_features: torch.Tensor) -> torch.Tensor:
+        preNorm_one = self.preNorm_block_one(in_features)
+        self_attention_result = self.self_attention_block(preNorm_one)
+        residual_one = self_attention_result + in_features
+
+        preNorm_two = self.preNorm_block_two(residual_one)
+        ffn_result = self.feedforward_block(preNorm_two)
+        result = ffn_result + residual_one
+        return result
+    
 
     
