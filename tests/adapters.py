@@ -10,7 +10,7 @@ from jaxtyping import Bool, Float, Int
 from cs336_basics.train_bpe import vocab_init, pre_tokenization, merge
 from torch import Tensor
 from cs336_basics.tokenizer import tokenizer
-from cs336_basics.module import Linear, Embedding, RMSNorm, SwiGLU, RoPE, softmax, dot_product_attention, multihead_self_attention, Transformer_Block, SiLU
+from cs336_basics.module import Linear, Embedding, RMSNorm, SwiGLU, RoPE, softmax, dot_product_attention, multihead_self_attention, Transformer_Block, SiLU, Transformer_LM
 
 
 def run_linear(
@@ -406,7 +406,38 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    transformer = Transformer_LM(vocab_size, context_length, d_model, num_layers, num_heads, d_ff, rope_theta)
+    state_dict = {}
+
+    # embedding 层
+    state_dict["embedding_layer.embedding_matrix"] = weights["token_embeddings.weight"]
+
+    # 每一层 transformer block
+    for i in range(num_layers):
+        # RMSNorm
+        state_dict[f"layers.{i}.preNorm_block_one.g"] = weights[f"layers.{i}.ln1.weight"]
+        state_dict[f"layers.{i}.preNorm_block_two.g"] = weights[f"layers.{i}.ln2.weight"]
+        
+        # attention 投影
+        state_dict[f"layers.{i}.self_attention_block.q_proj_weight.W"] = weights[f"layers.{i}.attn.q_proj.weight"]
+        state_dict[f"layers.{i}.self_attention_block.k_proj_weight.W"] = weights[f"layers.{i}.attn.k_proj.weight"]
+        state_dict[f"layers.{i}.self_attention_block.v_proj_weight.W"] = weights[f"layers.{i}.attn.v_proj.weight"]
+        state_dict[f"layers.{i}.self_attention_block.o_proj_weight.W"] = weights[f"layers.{i}.attn.output_proj.weight"]
+        
+        # FFN
+        state_dict[f"layers.{i}.feedforward_block.W1.W"] = weights[f"layers.{i}.ffn.w1.weight"]
+        state_dict[f"layers.{i}.feedforward_block.W2.W"] = weights[f"layers.{i}.ffn.w2.weight"]
+        state_dict[f"layers.{i}.feedforward_block.W3.W"] = weights[f"layers.{i}.ffn.w3.weight"]
+
+    # 最终 norm 和 lm_head
+    state_dict["norm.g"] = weights["ln_final.weight"]
+    state_dict["linear.W"] = weights["lm_head.weight"]
+
+    transformer.load_state_dict(state_dict)
+    result = transformer.forward(in_indices)
+
+    return result
+
 
 
 def run_rmsnorm(
