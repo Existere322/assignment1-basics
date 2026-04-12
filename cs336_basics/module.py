@@ -172,19 +172,19 @@ class multihead_self_attention(nn.Module):
         V_in = einsum(v_proj_weight, in_features, "dk din, ... seqlen din -> ... seqlen dk")
 
         d_k = Q_in.shape[-1]
-        Q_in = rearrange(Q_in, "... seqlen dk -> ... head seqlen dv", head=self.num_heads, dv=d_k//self.num_heads)
-        K_in = rearrange(K_in, "... seqlen dk -> ... head seqlen dv", head=self.num_heads, dv=d_k//self.num_heads)
-        V_in = rearrange(V_in, "... seqlen dk -> ... head seqlen dv", head=self.num_heads, dv=d_k//self.num_heads)
+        Q_in = rearrange(Q_in, "... seqlen (head dv) -> ... head seqlen dv", head=self.num_heads, dv=d_k//self.num_heads)
+        K_in = rearrange(K_in, "... seqlen (head dv) -> ... head seqlen dv", head=self.num_heads, dv=d_k//self.num_heads)
+        V_in = rearrange(V_in, "... seqlen (head dv) -> ... head seqlen dv", head=self.num_heads, dv=d_k//self.num_heads)
 
         if self.token_positions is not None:
-            position_embedding = RoPE(self.theta, Q_in.shape[-1], self.max_seq_len, self.device, self.dtype)
+            position_embedding = RoPE(self.theta, Q_in.shape[-1], self.max_seq_len, self.device)
             Q_in = position_embedding.forward(Q_in, self.token_positions)
             K_in = position_embedding.forward(K_in, self.token_positions)
 
         seq_len = Q_in.shape[-2]
         mask = torch.tril(torch.ones(seq_len, seq_len, dtype=torch.bool, device=Q_in.device))
         attention_result = dot_product_attention(Q_in, K_in, V_in, mask)
-        attention_result = rearrange(attention_result, "... head seqlen dv -> ... seqlen dk")
+        attention_result = rearrange(attention_result, "... head seqlen dv -> ... seqlen (head dv)")
         result = einsum(attention_result, o_proj_weight, "... seqlen dk, dm dk -> ... seqlen dm")
 
         return result
