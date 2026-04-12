@@ -132,10 +132,62 @@ def dot_product_attention(
 ) -> torch.Tensor:
     # Q: ... n d_k
     # K: ... m d_k
+    # 其中 n 和 m 代表了 sequence length，当进行 self attention 机制的时候二者的大小就是一样的
     softmax_content = einsum(Q, K, "... n dk, ... m dk -> ... n m")/(Q.shape[-1] ** 0.5)
     if mask is not None:
         softmax_content = softmax_content.masked_fill(~mask, -torch.inf)
     softmax_result = softmax(softmax_content, -1)
     result = einsum(softmax_result, V, "... n m, ... m d -> ... n d")
     return result
+    
+
+class multihead_self_attention(nn.Module):
+    def __init__(self, 
+                 d_model: int,
+                 num_heads: int, 
+                 theta: float = 0.0, 
+                 max_seq_len: int = 0, 
+                 token_positions: torch.Tensor | None = None, 
+                 device: torch.device | None = None, 
+                 dtype: torch.dtype | None = None
+                ):
+        super().__init__()
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.device = device
+        self.dtype = dtype
+        self.theta = theta
+        self.max_seq_len = max_seq_len
+        self.token_positions = token_positions
+
+
+    def forward(self,
+                 q_proj_weight: torch.Tensor,
+                 k_proj_weight: torch.Tensor,
+                 v_proj_weight: torch.Tensor,
+                 o_proj_weight: torch.Tensor,
+                 in_features: torch.Tensor) -> torch.Tensor:
+        Q_in = einsum(q_proj_weight, in_features, "dk din, ... seqlen din -> ... seqlen dk")
+        K_in = einsum(k_proj_weight, in_features, "dk din, ... seqlen din -> ... seqlen dk")
+        V_in = einsum(v_proj_weight, in_features, "dk din, ... seqlen din -> ... seqlen dk")
+
+        d_k = Q_in.shape[-1]
+        Q_in = rearrange(Q_in, "... seqlen dk -> ... head seqlen dv", head=self.num_heads, dv=d_k//self.num_heads)
+        K_in = rearrange(K_in, "... seqlen dk -> ... head seqlen dv", head=self.num_heads, dv=d_k//self.num_heads)
+        V_in = rearrange(V_in, "... seqlen dk -> ... head seqlen dv", head=self.num_heads, dv=d_k//self.num_heads)
+
+        if self.token_positions is not None:
+            position_embedding = RoPE(self.theta, Q_in.shape[-1], self.max_seq_len, self.device, self.dtype)
+            Q_in = position_embedding.forward(Q_in, self.token_positions)
+            K_in = position_embedding.forward(K_in, self.token_positions)
+
+        seq_len = Q_in.shape[-2]
+        mask = torch.tril(torch.ones(seq_len, seq_len, dtype=torch.bool, device=Q_in.device))
+        attention_result = dot_product_attention(Q_in, K_in, V_in, mask)
+        attention_result = rearrange(attention_result, "... head seqlen dv -> ... seqlen dk")
+        result = einsum(attention_result, o_proj_weight, "... seqlen dk, dm dk -> ... seqlen dm")
+
+        return result
+
+
     
