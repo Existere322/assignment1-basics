@@ -1,11 +1,10 @@
 import torch.nn as nn
 import torch
 from einops import rearrange, einsum
+from collections.abc import Callable, Iterable 
+from typing import Optional 
+import math
 
-"""
-TODO: 所有线性层用自己定义的 Linear 实现，传递参数使用 load_state_dict 方法进行传递
-      RoPE 的 forward 函数优化，不需要每次都存储一边整个 cos 和 sin 内容
-"""
 
 class Linear(nn.Module):
     def __init__(self,
@@ -253,3 +252,66 @@ class Transformer_LM(nn.Module):
 
         return result
         
+
+def cross_entropy(inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+
+    batch_size = inputs.shape[0]
+    max_entry = torch.max(inputs, dim=-1, keepdim=True)
+    inputs_submax = inputs - max_entry.values
+    inputs_exp = torch.exp(inputs_submax)
+    inputs_sum = torch.sum(inputs_exp, dim=-1, keepdim=True)
+    result = torch.log(inputs_sum) - inputs_submax[torch.arange(batch_size), targets]
+    # -log(exp(target) / sum_exp(i)) = log(sum_exp(i)) - target
+    result = result.mean()
+
+    return result
+
+
+class AdamW(torch.optim.Optimizer):
+    def __init__(self, params, lr, weight_decay, betas, eps=1e-8): 
+        if lr < 0: raise ValueError(f"Invalid learning rate: {lr}") 
+        # defaults 仅仅存储人为配置，不随着训练改变的参数
+        defaults = {"lr": lr, 
+                    "beta1": betas[0], 
+                    "beta2": betas[1], 
+                    "epsilon":eps,
+                    "weight_decay": weight_decay
+                    } 
+        super().__init__(params, defaults)  
+
+    def step(self, closure: Optional[Callable] = None):
+        loss = None if closure is None else closure()
+        for group in self.param_groups:
+            # 参数可以分组存储，每一组都可以用不同的学习率参数去训练
+            lr = group["lr"]
+            beta1 = group["beta1"]
+            beta2 = group["beta2"]
+            epsilon = group["epsilon"]
+            weight_decay = group["weight_decay"]
+
+            for p in group["params"]:
+                if p.grad is None: continue
+                state = self.state[p]
+                if len(state) == 0:
+                    state["m"] = torch.zeros_like(p.data)
+                    state["v"] = torch.zeros_like(p.data)
+                    state["t"] = 1
+                t = state.get("t")
+                m = state.get("m")
+                v = state.get("v") 
+
+                # 由于这一步涉及了原有的数据，因此要先计算这一步，然后再计算其他的
+                p.data -= lr * weight_decay * p.data
+
+                grad = p.grad.data 
+                m = beta1 * m + (1 - beta1) * grad
+                v = beta2 * v + (1 - beta2) * (grad ** 2)
+                alpha_t = lr * (math.sqrt(1-beta2**t)/(1-beta1**t))
+                p.data -= alpha_t * m / (torch.sqrt(v) + epsilon)
+                
+
+                state["t"] = t + 1
+                state["m"] = m
+                state["v"] = v
+
+        return loss
