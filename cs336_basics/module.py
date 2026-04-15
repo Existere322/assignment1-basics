@@ -315,3 +315,36 @@ class AdamW(torch.optim.Optimizer):
                 state["v"] = v
 
         return loss
+
+
+def learning_rate_schedule(
+        it: int,
+        max_learning_rate: float,
+        min_learning_rate: float,
+        warmup_iters: int,
+        cosine_cycle_iters: int,
+) -> float:
+    if it < warmup_iters:
+        alpha_t = it/warmup_iters*max_learning_rate
+    if it >= warmup_iters and it <= cosine_cycle_iters:
+        alpha_t = min_learning_rate + 1/2*(1+math.cos((it-warmup_iters)/(cosine_cycle_iters-warmup_iters)*math.pi))*(max_learning_rate-min_learning_rate)
+    if it > cosine_cycle_iters:
+        alpha_t = min_learning_rate
+
+    return alpha_t
+
+
+def gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float) -> None:
+    total = 0
+    for p in parameters:
+        if p.grad is None: continue
+        total += (p.grad ** 2).sum()
+
+    total = math.sqrt(total)
+
+    if total > max_l2_norm:
+        scale_ratio = max_l2_norm / (total + 1e-6)
+        for p in parameters:
+            if p.grad is None: continue
+            p.grad *= scale_ratio
+    

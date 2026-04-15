@@ -10,7 +10,7 @@ from jaxtyping import Bool, Float, Int
 from cs336_basics.train_bpe import vocab_init, pre_tokenization, merge
 from torch import Tensor
 from cs336_basics.tokenizer import tokenizer
-from cs336_basics.module import Linear, Embedding, RMSNorm, SwiGLU, RoPE, softmax, dot_product_attention, multihead_self_attention, Transformer_Block, SiLU, Transformer_LM, cross_entropy, AdamW
+from cs336_basics.module import Linear, Embedding, RMSNorm, SwiGLU, RoPE, softmax, dot_product_attention, multihead_self_attention, Transformer_Block, SiLU, Transformer_LM, cross_entropy, AdamW, learning_rate_schedule, gradient_clipping
 
 
 def run_linear(
@@ -549,7 +549,8 @@ def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm:
 
     The gradients of the parameters (parameter.grad) should be modified in-place.
     """
-    raise NotImplementedError
+    gradient_clipping(parameters, max_l2_norm)
+
 
 
 def get_adamw_cls() -> Any:
@@ -584,7 +585,8 @@ def run_get_lr_cosine_schedule(
     Returns:
         Learning rate at the given iteration under the specified schedule.
     """
-    raise NotImplementedError
+    result = learning_rate_schedule(it, max_learning_rate, min_learning_rate, warmup_iters, cosine_cycle_iters)
+    return result
 
 
 def run_save_checkpoint(
