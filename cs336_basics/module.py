@@ -351,13 +351,15 @@ def gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: flo
         for p in parameters:
             if p.grad is None: continue
             p.grad *= scale_ratio
+
+    return total
     
 
 def data_loading(dataset: npt.NDArray, batch_size: int, context_length: int, device: str) -> tuple[torch.Tensor, torch.Tensor]:
     max_len = len(dataset) - context_length
 
     ix = torch.randint(0, max_len, size=(batch_size,))
-    ix.tolist()
+    ix = ix.tolist()
 
     x_list = [dataset[i: i+context_length] for i in ix]
     y_list = [dataset[i+1 : i+context_length+1] for i in ix]
@@ -393,3 +395,11 @@ def load_checkpoint(
     iteration = checkpoint["iteration"]
     return iteration
 
+
+"""
+TODO: 目前可能存在的问题：
+cross_entropy 的 shape 问题(这个最容易卡住)。你写的 cross_entropy 里 inputs_submax[torch.arange(batch_size), targets] 这种索引隐含了 inputs 是 2D (B, V)、targets 是 1D (B,)。但 LM 的输出是 3D (B, T, V),target 是 (B, T)。最简单的做法是在调 loss 前把 batch 和 sequence 维 flatten 掉,变成 (B*T, V) 和 (B*T,),这样对所有 token 位置一起算 CE,正好是 next-token prediction 想要的。不要去改 cross_entropy 内部,否则测试会挂。
+device 一致性。model、x、y、optimizer state 都要在同一个 device 上。data_loading 末尾已经 .to(device) 过,OK。但恢复 checkpoint 之后,optimizer 里的 m、v tensor 也得在正确 device 上(PyTorch load_state_dict 通常会处理,但保险起见 load 完之后扫一遍 state dict)。
+iteration vs optimizer 内部 t。你 schedule 用的 it 是训练轮数,AdamW 内部的 t 是它自己维护的更新次数,二者是分开的。从 checkpoint 恢复时你要把 it 也存进去并恢复出来,不能只靠 optimizer state。你的 save_checkpoint 已经存了 iteration,正确。
+RNG 状态(可选)。如果想做严格可复现的恢复,checkpoint 里把 torch.get_rng_state() 和 numpy 的也存上。不强求。
+"""
