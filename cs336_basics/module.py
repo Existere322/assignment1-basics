@@ -403,3 +403,41 @@ device 一致性。model、x、y、optimizer state 都要在同一个 device 上
 iteration vs optimizer 内部 t。你 schedule 用的 it 是训练轮数,AdamW 内部的 t 是它自己维护的更新次数,二者是分开的。从 checkpoint 恢复时你要把 it 也存进去并恢复出来,不能只靠 optimizer state。你的 save_checkpoint 已经存了 iteration,正确。
 RNG 状态(可选)。如果想做严格可复现的恢复,checkpoint 里把 torch.get_rng_state() 和 numpy 的也存上。不强求。
 """
+
+
+def temperature_scaling_softmax(v: torch.Tensor, dim: int, tau: float) -> torch.Tensor:
+    # if input shape is ... seq_len, vocab_size if in the last dimension do the softmax
+    # output shape will become ... seq_len, vocab_size
+    # because in each place have a number of vocab_size logits 
+    max_v = torch.max(v, dim=dim, keepdim=True)
+    sub_max_v = v - max_v.values()
+    temp_scaling_v = sub_max_v / tau
+    exp_v = torch.exp(temp_scaling_v)
+    sum_exp_v = torch.sum(exp_v, dim=dim, keepdim=True)
+    result = exp_v / sum_exp_v
+
+    return result
+
+
+def top_p_sampling(v: torch.Tensor, dim: int, p: float) -> torch.Tensor:
+    # 首先对内容按照维度进行排序，并且得到排序前后的位置映射
+    sorted_v, sorted_indices = torch.sort(v, dim=dim)
+    # 进行累计加法
+    cumulate_sums = torch.cumsum(sorted_v, dim=dim)
+    # 每个取 > p 的位置
+    sorted_masks = cumulate_sums > p
+    # 因为 > p 处也要 mask 因此整体右移一位
+    sorted_masks[..., 1:] = sorted_masks[..., :-1].clone()
+    sorted_masks[..., 0] = False
+    sorted_v = sorted_v.masked_fill(sorted_masks, 0.0)
+    sorted_v = sorted_v / torch.sum(sorted_v, dim=dim, keepdim=True)
+
+    # 将结果填入原有位置
+    filtered_v = torch.zeros_like(v)
+    filtered_v.scatter_(dim=-1, index=sorted_indices, src=sorted_v)
+
+    return filtered_v
+
+
+
+

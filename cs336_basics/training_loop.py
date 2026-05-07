@@ -1,6 +1,6 @@
 from cs336_basics.module import Transformer_LM, cross_entropy, AdamW
 from cs336_basics.module import learning_rate_schedule, gradient_clipping, data_loading
-from cs336_basics.module import save_checkpoint, load_checkpoint
+from cs336_basics.module import save_checkpoint, load_checkpoint, top_p_sampling, temperature_scaling_softmax
 import torch
 import numpy as np
 import argparse
@@ -54,8 +54,26 @@ def parse_args():
     g_IO.add_argument("--log_path", type=str,
                       default=os.path.join(os.path.dirname(__file__), "log_position"))
     g_IO.add_argument("--log_interval", type=int, default=100)
+    g_IO.add_argument("--max_token_num", type=int, default=100)
+    g_IO.add_argument("--user_prompt", type=str, default="hello")
+    g_IO.add_argument("--temperature", type=float, default=0.5)
+    g_IO.add_argument("--sampling_prob", type=float, default=0.8)
     
     return p.parse_args()
+
+
+def generating_text(model: Transformer_LM, user_prompt, max_token_num, temperature, sampling_prob):
+    
+    next_token = ""
+    num = 0
+    while next_token != "<|endoftext|>" and num < max_token_num:
+        next_token = model(user_prompt)
+        # TODO: 将 next_token 加入 prompt
+        softmax_result = temperature_scaling_softmax(next_token, -1, temperature)
+        top_p_result = top_p_sampling(softmax_result, -1, sampling_prob)
+        # TODO: 
+        # 1. 查找词表将 top_p_result 转换为字符串 
+        # 2. 同时利用分词器将 user_prompt 转化为 token
 
 
 def evaluate(model, val_data, batch_size, context_length, num_batches, device):
