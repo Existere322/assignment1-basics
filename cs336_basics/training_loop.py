@@ -1,6 +1,7 @@
 from cs336_basics.module import Transformer_LM, cross_entropy, AdamW
 from cs336_basics.module import learning_rate_schedule, gradient_clipping, data_loading
 from cs336_basics.module import save_checkpoint, load_checkpoint, top_p_sampling, temperature_scaling_softmax
+from cs336_basics.tokenizer import tokenizer
 import torch
 import numpy as np
 import argparse
@@ -11,11 +12,12 @@ import time
 def parse_args():
     p = argparse.ArgumentParser()
     g_model = p.add_argument_group("model")
-    g_model.add_argument("--vocab_size", type=int, default=32000)
-    g_model.add_argument("--context_length", type=int, default=512)
-    g_model.add_argument("--batch_size", type=int, default=32)
+    g_model.add_argument("--vocab_size", type=int, default=10000)
+    g_model.add_argument("--context_length", type=int, default=256)
+    g_model.add_argument("--batch_size", type=int, default=64)
+    # batch_size * total_step_count * context_length = 327680000
     g_model.add_argument("--num_layers", type=int, default=4)
-    g_model.add_argument("--num_heads", type=int, default=8)
+    g_model.add_argument("--num_heads", type=int, default=16)
     g_model.add_argument("--d_ff", type=int, default=1344)
     g_model.add_argument("--d_model", type=int, default=512)
     g_model.add_argument("--rope_theta", type=float, default=10000.0)
@@ -28,16 +30,16 @@ def parse_args():
 
 
     g_training = p.add_argument_group("training")
-    g_training.add_argument("--max_learning_rate", type=float, default=3e-4)
-    g_training.add_argument("--min_learning_rate", type=float, default=3e-5)
-    g_training.add_argument("--warmup_iters", type=int, default=500)
-    g_training.add_argument("--cosine_cycle_iters", type=int, default=50000)
-    g_training.add_argument("--end_iter", type=int, default=50000)
+    g_training.add_argument("--max_learning_rate", type=float, default=1e-3)
+    g_training.add_argument("--min_learning_rate", type=float, default=1e-4)
+    g_training.add_argument("--warmup_iters", type=int, default=1000)
+    g_training.add_argument("--cosine_cycle_iters", type=int, default=19500)
+    g_training.add_argument("--end_iter", type=int, default=20000)
     g_training.add_argument("--grad_clip_norm", type=float, default=1.0)
     g_training.add_argument("--val_interval", type=int, default=500)
-    g_training.add_argument("--val_batches", type=int, default=20)
+    g_training.add_argument("--val_batches", type=int, default=50)
     g_training.add_argument("--device", type=str, default="cuda")
-    g_training.add_argument("--seed", type=int, default=42)
+    g_training.add_argument("--seed", type=int, default=336)
     g_training.add_argument("--dtype", type=str, default="float32",
                         choices=["float32", "float16", "bfloat16"])
 
@@ -46,9 +48,9 @@ def parse_args():
     g_IO.add_argument("--step_to_save", type=int, default=1000)
     g_IO.add_argument("--save_N", type=int, default=10)
     g_IO.add_argument("--train_path", type=str,
-                      default=os.path.join(os.path.dirname(__file__), "train_path"))
+                      default=os.path.join(os.path.dirname(__file__), "train_path/TinyStoriesV2-GPT4-train.bin"))
     g_IO.add_argument("--val_path", type=str,
-                      default=os.path.join(os.path.dirname(__file__), "valid_path"))
+                      default=os.path.join(os.path.dirname(__file__), "valid_path/TinyStoriesV2-GPT4-valid.bin"))
     g_IO.add_argument("--save_position", type=str,
                       default=os.path.join(os.path.dirname(__file__), "save_position"))
     g_IO.add_argument("--log_path", type=str,
@@ -61,13 +63,16 @@ def parse_args():
     
     return p.parse_args()
 
+VOCAB_PATH = os.path.join(os.path.dirname(__file__), "test_experiments/bpe_tinystories_model/vocab.json")
+MERGES_PATH = os.path.join(os.path.dirname(__file__), "test_experiments/bpe_tinystories_model/merges.txt")
 
 def generating_text(model: Transformer_LM, user_prompt, max_token_num, temperature, sampling_prob):
-    
+    bpe_tokenizer = tokenizer.from_files(vocab_filepath=VOCAB_PATH, merges_filepath=MERGES_PATH, special_tokens=["<|endoftext|>"])
+    encode_prompt = bpe_tokenizer.encode(user_prompt)
     next_token = ""
     num = 0
     while next_token != "<|endoftext|>" and num < max_token_num:
-        next_token = model(user_prompt)
+        next_token = model(encode_prompt)
         # TODO: 将 next_token 加入 prompt
         softmax_result = temperature_scaling_softmax(next_token, -1, temperature)
         top_p_result = top_p_sampling(softmax_result, -1, sampling_prob)
@@ -135,7 +140,7 @@ def main(args):
 
 
     # 按照步数迭代
-    t = start_iter - 1
+    t = start_iter + 1
     try:
         last_log_time = time.time()
         for t in range(start_iter, args.end_iter):
@@ -147,7 +152,8 @@ def main(args):
             x, y = data_loading(train_data, args.batch_size, args.context_length, device)
 
             logits = transformer_model(x)
-            loss = cross_entropy(logits.reshape(-1, logits.size(-1)), y.reshape(-1))
+            loss = cross_entropy(logits.view(-1, logits.size(-1)), y.reshape(-1))
+
 
             loss.backward()
 
@@ -184,8 +190,8 @@ def main(args):
                 save_checkpoint(transformer_model, optimizer, t, latest_position)
     finally:
         log_file.close()
-        latest_position = os.path.join(args.save_position, "model_latest.pt")
-        save_checkpoint(transformer_model, optimizer, t, latest_position)
+        # latest_position = os.path.join(args.save_position, "model_latest.pt")
+        # save_checkpoint(transformer_model, optimizer, t, latest_position)
 
 
 if __name__ == "__main__": main(parse_args())
