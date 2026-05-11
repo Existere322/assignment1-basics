@@ -91,7 +91,7 @@ def main():
     tok = Tokenizer.from_files(
         vocab_filepath=VOCAB_PATH,
         merges_filepath=MERGES_PATH,
-        special_tokens=None,
+        special_tokens='<|endoftext|>',
     )
 
     train_bin_path = make_output_path(TRAIN_TXT_PATH)

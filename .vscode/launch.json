@@ -26,7 +26,7 @@
                 // model
                 "--vocab_size", "10000",
                 "--context_length", "256",
-                "--batch_size", "64",
+                "--batch_size", "128",
                 "--num_layers", "4",
                 "--num_heads", "16",
                 "--d_ff", "1344",
@@ -39,11 +39,12 @@
                 "--eps", "1e-8",
 
                 // training
-                "--max_learning_rate", "1e-3",
-                "--min_learning_rate", "1e-4",
+                "--max_learning_rate", "2e-3",
+                "--min_learning_rate", "2e-4",
                 "--warmup_iters", "1000",
                 "--cosine_cycle_iters", "19500",
-                "--end_iter", "20000",
+                // batch_size * total_step_count * context_length = 327680000
+                "--end_iter", "10000",
                 "--grad_clip_norm", "1.0",
                 "--val_interval", "500",
                 "--val_batches", "50",
@@ -59,10 +60,10 @@
                 // "--save_position", "${workspaceFolder}/save_position",
                 // "--log_path", "${workspaceFolder}/log_position",
                 // "--log_interval", "100",
-                // "--max_token_num", "100",
-                // "--user_prompt", "${input:userPrompt}",
-                // "--temperature", "0.5",
-                // "--sampling_prob", "0.8"
+                "--max_token_num", "256",
+                "--user_prompt", "hello! I'm a Transformer model with 17M parameters, ",
+                "--temperature", "0.5",
+                "--sampling_prob", "0.8"
             ]
         }
     ],

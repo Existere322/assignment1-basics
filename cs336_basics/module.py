@@ -186,8 +186,7 @@ class multihead_self_attention(nn.Module):
 
         if self.theta is not None:
             seq_len = Q_in.shape[-2]
-            if self.token_positions is None:
-                self.token_positions = torch.arange(seq_len, device=in_features.device)
+            self.token_positions = torch.arange(seq_len, device=in_features.device)
             Q_in = self.position_embedding(Q_in, self.token_positions)
             K_in = self.position_embedding(K_in, self.token_positions)
 
@@ -410,7 +409,7 @@ def temperature_scaling_softmax(v: torch.Tensor, dim: int, tau: float) -> torch.
     # output shape will become ... seq_len, vocab_size
     # because in each place have a number of vocab_size logits 
     max_v = torch.max(v, dim=dim, keepdim=True)
-    sub_max_v = v - max_v.values()
+    sub_max_v = v - max_v.values
     temp_scaling_v = sub_max_v / tau
     exp_v = torch.exp(temp_scaling_v)
     sum_exp_v = torch.sum(exp_v, dim=dim, keepdim=True)
@@ -421,7 +420,7 @@ def temperature_scaling_softmax(v: torch.Tensor, dim: int, tau: float) -> torch.
 
 def top_p_sampling(v: torch.Tensor, dim: int, p: float) -> torch.Tensor:
     # 首先对内容按照维度进行排序，并且得到排序前后的位置映射
-    sorted_v, sorted_indices = torch.sort(v, dim=dim)
+    sorted_v, sorted_indices = torch.sort(v, dim=dim, descending=True)
     # 进行累计加法
     cumulate_sums = torch.cumsum(sorted_v, dim=dim)
     # 每个取 > p 的位置

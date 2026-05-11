@@ -19,12 +19,13 @@ class tokenizer():
         self.special_tokens = special_tokens
         self.merge_rank = {}
         self.revocab = {}
+        # TODO: 完善这个逻辑使得 special tokens 可以正确被处理 
+        if special_tokens:
 
-        if special_tokens and vocab[max(vocab.keys())].decode('utf-8') not in special_tokens:
             vocab_size = max(vocab.keys()) + 1 if vocab else 0
 
-            if special_tokens:
-                for token in special_tokens:
+            for token in special_tokens:
+                if token.encode('utf-8') not in vocab.values():
                     vocab[vocab_size] = token.encode('utf-8')
                     vocab_size += 1
 
@@ -262,7 +263,7 @@ class tokenizer():
 
     def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
         buffer = ""
-        chunk_size = 1024 * 1024  # 1MB
+        chunk_size = 512 * 1024 * 1024  # 512MB
         pre_pos = []
 
         # 构建安全边界的查找 pattern
