@@ -26,7 +26,7 @@
                 // model
                 "--vocab_size", "10000",
                 "--context_length", "256",
-                "--batch_size", "128",
+                "--batch_size", "256",
                 "--num_layers", "4",
                 "--num_heads", "16",
                 "--d_ff", "1344",
@@ -41,10 +41,10 @@
                 // training
                 "--max_learning_rate", "2e-3",
                 "--min_learning_rate", "2e-4",
-                "--warmup_iters", "1000",
-                "--cosine_cycle_iters", "19500",
+                "--warmup_iters", "500",
+                "--cosine_cycle_iters", "4800",
                 // batch_size * total_step_count * context_length = 327680000
-                "--end_iter", "10000",
+                "--end_iter", "5000",
                 "--grad_clip_norm", "1.0",
                 "--val_interval", "500",
                 "--val_batches", "50",
@@ -53,15 +53,15 @@
                 "--dtype", "${input:dtype}",
 
                 // IO
-                // "--step_to_save", "1000",
+                "--step_to_save", "500",
                 // "--save_N", "10",
                 // "--train_path", "${workspaceFolder}/train_path/TinyStoriesV2-GPT4-train.txt",
                 // "--val_path", "${workspaceFolder}/valid_path/TinyStoriesV2-GPT4-valid.txt",
                 // "--save_position", "${workspaceFolder}/save_position",
                 // "--log_path", "${workspaceFolder}/log_position",
                 // "--log_interval", "100",
-                "--max_token_num", "256",
-                "--user_prompt", "hello! I'm a Transformer model with 17M parameters, ",
+                "--max_token_num", "512",
+                "--user_prompt", "hello ! you should listen to me about this interesting story!",
                 "--temperature", "0.5",
                 "--sampling_prob", "0.8"
             ]

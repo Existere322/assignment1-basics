@@ -5,8 +5,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 """
-python analyze_training_log.py log_position/train_20260510_234739.jsonl \
-  --batch_size 64 \
+python analyze_training_log.py log_position/train_ablation2_NoPE.jsonl \
+  --batch_size 256 \
   --context_length 256 \
   --smooth_window 3 \
   --plot_extra

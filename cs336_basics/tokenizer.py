@@ -20,7 +20,14 @@ class tokenizer():
         self.merge_rank = {}
         self.revocab = {}
         # TODO: 完善这个逻辑使得 special tokens 可以正确被处理 
+
         if special_tokens:
+
+            if isinstance(special_tokens, str):
+                raise TypeError(
+                    "special_tokens must be list[str]. "
+                    "Use ['<|endoftext|>'], not '<|endoftext|>'."
+                )
 
             vocab_size = max(vocab.keys()) + 1 if vocab else 0
 

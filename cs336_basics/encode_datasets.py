@@ -54,7 +54,6 @@ def write_token_ids_to_bin(
 
     total_tokens = 0
     max_token_id = -1
-    buffer = []
 
     print(f"Encoding: {input_txt_path}")
     print(f"Output  : {output_bin_path}")
@@ -91,7 +90,7 @@ def main():
     tok = Tokenizer.from_files(
         vocab_filepath=VOCAB_PATH,
         merges_filepath=MERGES_PATH,
-        special_tokens='<|endoftext|>',
+        special_tokens=['<|endoftext|>'],
     )
 
     train_bin_path = make_output_path(TRAIN_TXT_PATH)

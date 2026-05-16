@@ -100,8 +100,6 @@ def generating_text(model: Transformer_LM, user_prompt, max_token_num, temperatu
             generated_ids.append(new_id)
 
             next_token = bpe_tokenizer.decode([new_id])
-            if next_token == 'The':
-                print("a new line !")
             if next_token == "<|endoftext|>" or new_id == 256: 
                 break
 
@@ -163,15 +161,16 @@ def main(args):
     val_data = np.memmap(args.val_path, dtype=np.uint16, mode="r")
 
     # 在有检查点的情况下加载检查点
-    if os.path.exists(args.save_position) and os.listdir(args.save_position):
-        latest = os.path.join(args.save_position, "model_latest.pt")
-        if os.path.exists(latest):
-            start_iter = load_checkpoint(latest, transformer_model, optimizer) + 1
+    # if os.path.exists(args.save_position) and os.listdir(args.save_position):
+    #     latest = os.path.join(args.save_position, "model_latest.pt")
+    #     if os.path.exists(latest):
+    #         start_iter = load_checkpoint(latest, transformer_model, optimizer) + 1
+    #         print(f"Start iteration is {start_iter}")
 
-    if args.user_prompt is not None:
-        generating_text(transformer_model, args.user_prompt, args.max_token_num, args.temperature, args.sampling_prob, args.context_length, args.device)
+    # if args.user_prompt is not None:
+    #     generating_text(transformer_model, args.user_prompt, args.max_token_num, args.temperature, args.sampling_prob, args.context_length, args.device)
 
-        return
+    #     return
 
     run_time = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file_path = os.path.join(args.log_path, f"train_{run_time}.jsonl")

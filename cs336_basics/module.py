@@ -217,11 +217,16 @@ class Transformer_Block(nn.Module):
     def forward(self, in_features: torch.Tensor) -> torch.Tensor:
         preNorm_one = self.preNorm_block_one(in_features)
         self_attention_result = self.self_attention_block(preNorm_one)
+        # self_attention_result = self.self_attention_block(in_features)  # without RMSNorm
+        self_attention_result = self.self_attention_block(in_features)
         residual_one = self_attention_result + in_features
+        # residual_one = self.preNorm_block_one(residual_one)  # post Norm one
 
         preNorm_two = self.preNorm_block_two(residual_one)
         ffn_result = self.feedforward_block(preNorm_two)
+        # ffn_result = self.feedforward_block(residual_one)  # without RMSNorm
         result = ffn_result + residual_one
+        # result = self.preNorm_block_two(result)  # post Norm two
         return result
     
 
@@ -252,6 +257,7 @@ class Transformer_LM(nn.Module):
             block_result = layer(block_result)
         norm_result = self.norm(block_result)
         result = self.linear(norm_result)
+        # result = self.linear(block_result)  # without RMSNorm
 
         return result
         
